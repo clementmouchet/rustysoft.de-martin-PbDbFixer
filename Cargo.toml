@@ -1,0 +1,15 @@
+[package]
+name = "pbdbfixer"
+version = "0.1.0"
+authors = ["Martin Brodbeck <martin@brodbeck-online.de>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+zip = "0.5"
+xml-rs = "0.8"
+
+[dependencies.rusqlite]
+version = "0.24"
+features = ["bundled"]
