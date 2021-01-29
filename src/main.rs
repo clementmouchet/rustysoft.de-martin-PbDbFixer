@@ -2,7 +2,7 @@ use rusqlite::{named_params, Connection, Result, NO_PARAMS};
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
-use xml::reader::{EventReader, XmlEvent};
+use xml::reader::{EventReader, ParserConfig, XmlEvent};
 use zip::{read::ZipFile, ZipArchive};
 
 fn get_root_file(container: ZipFile) -> Result<Option<String>, Box<dyn Error>> {
@@ -15,7 +15,6 @@ fn get_root_file(container: ZipFile) -> Result<Option<String>, Box<dyn Error>> {
             }) if name.local_name == "rootfile" => {
                 for attr in attributes {
                     if attr.name.local_name == "full-path" {
-                        //opf_file = attr.value;
                         return Ok(Some(attr.value));
                     }
                 }
@@ -30,7 +29,15 @@ fn get_root_file(container: ZipFile) -> Result<Option<String>, Box<dyn Error>> {
 }
 
 fn get_attribute_file_as(opf: ZipFile) -> Option<String> {
-    let parser = EventReader::new(opf);
+    let parser = ParserConfig::new()
+        .trim_whitespace(true)
+        .ignore_comments(true)
+        .coalesce_characters(true)
+        .create_reader(opf);
+
+    let mut refines_found = false;
+    let mut is_epub3 = false;
+    let mut creator_id = String::new();
 
     for e in parser {
         match e {
@@ -39,8 +46,8 @@ fn get_attribute_file_as(opf: ZipFile) -> Option<String> {
             }) if name.local_name == "package" => {
                 for attr in attributes {
                     if attr.name.local_name == "version" {
-                        if attr.value.starts_with("2") == false {
-                            return None;
+                        if attr.value.starts_with("3") == true {
+                            is_epub3 = true;
                         }
                     }
                 }
@@ -50,8 +57,36 @@ fn get_attribute_file_as(opf: ZipFile) -> Option<String> {
             }) if name.local_name == "creator" => {
                 for attr in attributes {
                     if attr.name.local_name == "file-as" {
+                        println!("File-as: {}", &attr.value);
                         return Some(attr.value);
                     }
+                    if is_epub3 && attr.name.local_name == "id" {
+                        creator_id = attr.value;
+                    }
+                }
+            }
+            Ok(XmlEvent::StartElement {
+                name, attributes, ..
+            }) if name.local_name == "meta" => {
+                if attributes.iter().any(|attr| {
+                    attr.name.local_name == "refines"
+                        && (attr.value == creator_id
+                            || attr.value == "#".to_owned() + creator_id.as_str())
+                }) && attributes
+                    .iter()
+                    .any(|attr| attr.name.local_name == "property" && attr.value == "file-as")
+                {
+                    refines_found = true;
+                }
+            }
+            Ok(XmlEvent::Characters(value)) => {
+                if refines_found == true {
+                    return Some(value);
+                }
+            }
+            Ok(XmlEvent::StartElement { .. }) => {
+                if refines_found == true {
+                    refines_found = false;
                 }
             }
             Err(_e) => {
