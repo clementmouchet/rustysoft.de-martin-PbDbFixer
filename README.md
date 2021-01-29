@@ -9,8 +9,8 @@ metadata.
 ## Compatibility
 This program is tested only on a PocketBook Touch HD 3 device (software
 version 6.1.900). It might work with other PocketBook devices/software
-versions. Please tell me, if it works for you (do make a backup of these
-explorer-3.db before trying!).
+versions. Please tell me, if it works for you (and do make a backup of the
+explorer-3.db file before trying!).
 
 ## Installation and Usage
 Just copy the executable file into the PocketBook's application directory.
