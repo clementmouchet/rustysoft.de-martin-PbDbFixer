@@ -108,7 +108,7 @@ fn main() {
     let mut conn = Connection::open("/mnt/ext1/system/explorer-3/explorer-3.db").unwrap();
     let tx = conn.transaction().unwrap();
     {
-        let mut stmt = tx.prepare("SELECT id FROM books_impl WHERE ext LIKE 'epub' AND author LIKE '% %' AND firstauthor NOT LIKE '%\\,%' ESCAPE '\\'").unwrap();
+        let mut stmt = tx.prepare("SELECT id FROM books_impl WHERE ext LIKE 'epub' AND author LIKE '% %' AND (firstauthor NOT LIKE '%\\,%' ESCAPE '\\' OR firstauthor LIKE '%&amp;%')").unwrap();
         let mut rows = stmt.query(NO_PARAMS).unwrap();
         let mut book_ids: Vec<i32> = Vec::new();
         while let Some(row) = rows.next().unwrap() {
