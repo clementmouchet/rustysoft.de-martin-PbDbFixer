@@ -38,8 +38,9 @@ fn get_attribute_file_as(opf: ZipFile) -> Option<String> {
         .create_reader(opf);
 
     let mut refines_found = false;
+    let mut refines_entries = Vec::new();
     let mut is_epub3 = false;
-    let mut creator_id = String::new();
+    let mut creator_ids = Vec::new();
 
     for e in parser {
         match e {
@@ -63,7 +64,7 @@ fn get_attribute_file_as(opf: ZipFile) -> Option<String> {
                         return Some(attr.value);
                     }
                     if is_epub3 && attr.name.local_name == "id" {
-                        creator_id = attr.value;
+                        creator_ids.push("#".to_owned() + attr.value.as_str());
                     }
                 }
             }
@@ -71,9 +72,7 @@ fn get_attribute_file_as(opf: ZipFile) -> Option<String> {
                 name, attributes, ..
             }) if name.local_name == "meta" => {
                 if attributes.iter().any(|attr| {
-                    attr.name.local_name == "refines"
-                        && (attr.value == creator_id
-                            || attr.value == "#".to_owned() + creator_id.as_str())
+                    attr.name.local_name == "refines" && creator_ids.contains(&attr.value)
                 }) && attributes
                     .iter()
                     .any(|attr| attr.name.local_name == "property" && attr.value == "file-as")
@@ -83,7 +82,8 @@ fn get_attribute_file_as(opf: ZipFile) -> Option<String> {
             }
             Ok(XmlEvent::Characters(value)) => {
                 if refines_found == true {
-                    return Some(value);
+                    refines_entries.push(value);
+                    refines_found = false;
                 }
             }
             Ok(XmlEvent::StartElement { .. }) => {
@@ -96,6 +96,12 @@ fn get_attribute_file_as(opf: ZipFile) -> Option<String> {
             }
             _ => {}
         }
+    }
+
+    if refines_entries.len() == 1 {
+        return Some(refines_entries.remove(0));
+    } else if refines_entries.len() >= 2 {
+        return Some(refines_entries.join(" & "));
     }
 
     None
@@ -112,12 +118,25 @@ fn main() {
     let mut conn = Connection::open("/mnt/ext1/system/explorer-3/explorer-3.db").unwrap();
     let tx = conn.transaction().unwrap();
     {
+        // Get book ids from entries where we have something like "firstname lastname" in author
+        // but no "lastname, firstname" in fistauthor
         let mut stmt = tx.prepare("SELECT id FROM books_impl WHERE ext LIKE 'epub' AND author LIKE '% %' AND (firstauthor NOT LIKE '%\\,%' ESCAPE '\\' OR firstauthor LIKE '%&amp;%')").unwrap();
         let mut rows = stmt.query(NO_PARAMS).unwrap();
         let mut book_ids: Vec<i32> = Vec::new();
         while let Some(row) = rows.next().unwrap() {
             book_ids.push(row.get(0).unwrap());
         }
+
+        // Get also book ids from the special case where we have multiple authors (separated by ", " in authors)
+        // but no ampersand ("&") in firstauthor
+        let mut stmt = tx.prepare("SELECT id FROM books_impl WHERE ext LIKE 'epub' AND author LIKE '%\\, %' ESCAPE '\\' AND firstauthor NOT LIKE '%&%'").unwrap();
+        let mut rows = stmt.query(NO_PARAMS).unwrap();
+        while let Some(row) = rows.next().unwrap() {
+            book_ids.push(row.get(0).unwrap());
+        }
+
+        book_ids.sort();
+        book_ids.dedup();
 
         let mut bookentries = Vec::new();
 
