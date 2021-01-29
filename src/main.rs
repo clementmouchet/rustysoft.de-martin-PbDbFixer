@@ -1,3 +1,5 @@
+mod pocketbook;
+
 use rusqlite::{named_params, Connection, Result, NO_PARAMS};
 use std::error::Error;
 use std::fs::File;
@@ -105,6 +107,8 @@ struct BookEntry {
 }
 
 fn main() {
+    let mut authors_fixed = 0;
+
     let mut conn = Connection::open("/mnt/ext1/system/explorer-3/explorer-3.db").unwrap();
     let tx = conn.transaction().unwrap();
     {
@@ -133,8 +137,6 @@ fn main() {
             }
         }
 
-        //println!("Number of entries found: {}", bookentries.len());
-
         for entry in bookentries {
             let file = File::open(entry.filepath.as_str());
             let file = match file {
@@ -154,9 +156,24 @@ fn main() {
                         .unwrap();
                     stmt.execute_named(named_params![":file_as": file_as, ":book_id": entry.id])
                         .unwrap();
+                    authors_fixed = authors_fixed + 1;
                 }
             }
         }
     }
     tx.commit().unwrap();
+
+    if cfg!(target_arch = "arm") {
+        if authors_fixed == 0 {
+            pocketbook::dialog(
+                pocketbook::Icon::Info,
+                "The database seems to be ok.\nNothing had to be fixed.",
+            );
+        } else {
+            pocketbook::dialog(
+                pocketbook::Icon::Info,
+                &format!("Authors fixed: {}", &authors_fixed),
+            );
+        }
+    }
 }
