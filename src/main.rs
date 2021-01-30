@@ -1,6 +1,6 @@
 mod pocketbook;
 
-use rusqlite::{named_params, Connection, Result, NO_PARAMS};
+use rusqlite::{named_params, Connection, Result, Transaction, NO_PARAMS};
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
@@ -111,17 +111,14 @@ struct BookEntry {
     filepath: String,
 }
 
-fn main() {
+fn fix_firstauthor(tx: &Transaction) -> i32 {
     let mut authors_fixed = 0;
 
-    let mut conn = Connection::open("/mnt/ext1/system/explorer-3/explorer-3.db").unwrap();
-    let tx = conn.transaction().unwrap();
-    {
-        // Get book ids from entries where we have something like "firstname lastname" in author
-        // but no "lastname, firstname" in fistauthor
-        // Get also book ids from the special case where we have multiple authors (separated by ", " in authors)
-        // but no ampersand ("&") in firstauthor
-        let mut stmt = tx.prepare(r"
+    // Get book ids from entries where we have something like "firstname lastname" in author
+    // but no "lastname, firstname" in fistauthor
+    // Get also book ids from the special case where we have multiple authors (separated by ", " in authors)
+    // but no ampersand ("&") in firstauthor
+    let mut stmt = tx.prepare(r"
         SELECT files.book_id, folders.name, files.filename 
           FROM files INNER JOIN folders
             ON files.folder_id = folders.id
@@ -134,44 +131,52 @@ fn main() {
             AND files.storageid = 1
         ;").unwrap();
 
-        let mut rows = stmt.query(NO_PARAMS).unwrap();
-        let mut bookentries = Vec::new();
+    let mut rows = stmt.query(NO_PARAMS).unwrap();
+    let mut bookentries = Vec::new();
 
-        while let Some(row) = rows.next().unwrap() {
-            let book_id: i32 = row.get(0).unwrap();
-            let prefix: String = row.get(1).unwrap();
-            let filename: String = row.get(2).unwrap();
-            let filepath = format!("{}/{}", prefix, filename);
-            bookentries.push(BookEntry {
-                id: book_id,
-                filepath,
-            });
-        }
+    while let Some(row) = rows.next().unwrap() {
+        let book_id: i32 = row.get(0).unwrap();
+        let prefix: String = row.get(1).unwrap();
+        let filename: String = row.get(2).unwrap();
+        let filepath = format!("{}/{}", prefix, filename);
+        bookentries.push(BookEntry {
+            id: book_id,
+            filepath,
+        });
+    }
 
-        for entry in bookentries {
-            let file = File::open(entry.filepath.as_str());
-            let file = match file {
-                Err(_) => continue,
-                Ok(file) => file,
-            };
+    for entry in bookentries {
+        let file = File::open(entry.filepath.as_str());
+        let file = match file {
+            Err(_) => continue,
+            Ok(file) => file,
+        };
 
-            let mut archive = ZipArchive::new(BufReader::new(file)).unwrap();
+        let mut archive = ZipArchive::new(BufReader::new(file)).unwrap();
 
-            let container = archive.by_name("META-INF/container.xml").unwrap();
+        let container = archive.by_name("META-INF/container.xml").unwrap();
 
-            if let Some(opf_file) = get_root_file(container).unwrap() {
-                let opf = archive.by_name(opf_file.as_str()).unwrap();
-                if let Some(file_as) = get_attribute_file_as(opf) {
-                    let mut stmt = tx
-                        .prepare("UPDATE books_impl SET firstauthor = :file_as WHERE id = :book_id")
-                        .unwrap();
-                    stmt.execute_named(named_params![":file_as": file_as, ":book_id": entry.id])
-                        .unwrap();
-                    authors_fixed = authors_fixed + 1;
-                }
+        if let Some(opf_file) = get_root_file(container).unwrap() {
+            let opf = archive.by_name(opf_file.as_str()).unwrap();
+            if let Some(file_as) = get_attribute_file_as(opf) {
+                let mut stmt = tx
+                    .prepare("UPDATE books_impl SET firstauthor = :file_as WHERE id = :book_id")
+                    .unwrap();
+                stmt.execute_named(named_params![":file_as": file_as, ":book_id": entry.id])
+                    .unwrap();
+                authors_fixed = authors_fixed + 1;
             }
         }
     }
+
+    authors_fixed
+}
+
+fn main() {
+    let mut conn = Connection::open("/mnt/ext1/system/explorer-3/explorer-3.db").unwrap();
+
+    let tx = conn.transaction().unwrap();
+    let authors_fixed = fix_firstauthor(&tx);
     tx.commit().unwrap();
 
     if cfg!(target_arch = "arm") {
