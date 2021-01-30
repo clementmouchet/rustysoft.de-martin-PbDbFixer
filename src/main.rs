@@ -60,7 +60,6 @@ fn get_attribute_file_as(opf: ZipFile) -> Option<String> {
             }) if name.local_name == "creator" => {
                 for attr in attributes {
                     if attr.name.local_name == "file-as" {
-                        println!("File-as: {}", &attr.value);
                         return Some(attr.value);
                     }
                     if is_epub3 && attr.name.local_name == "id" {
@@ -120,40 +119,33 @@ fn main() {
     {
         // Get book ids from entries where we have something like "firstname lastname" in author
         // but no "lastname, firstname" in fistauthor
-        let mut stmt = tx.prepare("SELECT id FROM books_impl WHERE ext LIKE 'epub' AND author LIKE '% %' AND (firstauthor NOT LIKE '%\\,%' ESCAPE '\\' OR firstauthor LIKE '%&amp;%')").unwrap();
-        let mut rows = stmt.query(NO_PARAMS).unwrap();
-        let mut book_ids: Vec<i32> = Vec::new();
-        while let Some(row) = rows.next().unwrap() {
-            book_ids.push(row.get(0).unwrap());
-        }
-
         // Get also book ids from the special case where we have multiple authors (separated by ", " in authors)
         // but no ampersand ("&") in firstauthor
-        let mut stmt = tx.prepare("SELECT id FROM books_impl WHERE ext LIKE 'epub' AND author LIKE '%\\, %' ESCAPE '\\' AND firstauthor NOT LIKE '%&%'").unwrap();
+        let mut stmt = tx.prepare(r"
+        SELECT files.book_id, folders.name, files.filename 
+          FROM files INNER JOIN folders
+            ON files.folder_id = folders.id
+          WHERE files.book_id IN 
+            (
+              SELECT DISTINCT id FROM books_impl 
+                WHERE (ext LIKE 'epub' AND author LIKE '% %' AND (firstauthor NOT LIKE '%\,%' ESCAPE '\' OR firstauthor LIKE '%&amp;%'))
+                  OR (ext LIKE 'epub' AND author LIKE '%\, %' ESCAPE '\' AND firstauthor NOT LIKE '%&%')
+            )
+            AND files.storageid = 1
+        ;").unwrap();
+
         let mut rows = stmt.query(NO_PARAMS).unwrap();
-        while let Some(row) = rows.next().unwrap() {
-            book_ids.push(row.get(0).unwrap());
-        }
-
-        book_ids.sort();
-        book_ids.dedup();
-
         let mut bookentries = Vec::new();
 
-        for book_id in book_ids {
-            let mut stmt = tx.prepare("SELECT folders.name,files.filename FROM files,folders WHERE files.book_id = :book_id AND files.storageid = 1 AND files.folder_id = folders.id").unwrap();
-            let mut rows = stmt
-                .query_named(named_params! { ":book_id": book_id })
-                .unwrap();
-            while let Some(row) = rows.next().unwrap() {
-                let prefix: String = row.get(0).unwrap();
-                let filename: String = row.get(1).unwrap();
-                let filepath = format!("{}/{}", prefix, filename);
-                bookentries.push(BookEntry {
-                    id: book_id,
-                    filepath: filepath,
-                });
-            }
+        while let Some(row) = rows.next().unwrap() {
+            let book_id: i32 = row.get(0).unwrap();
+            let prefix: String = row.get(1).unwrap();
+            let filename: String = row.get(2).unwrap();
+            let filepath = format!("{}/{}", prefix, filename);
+            bookentries.push(BookEntry {
+                id: book_id,
+                filepath,
+            });
         }
 
         for entry in bookentries {
