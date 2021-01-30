@@ -21,7 +21,7 @@ applications screen and tap on the PbDbFixer icon.
 To be able to build PbDbFixer, you have to have the cross compiler for
 ARM CPUs installed. On Arch Linux, the AUR package `arm-linux-gnueabi-gcc75-linaro-bin`
 does the job. Don't forget to tell `cargo` which compiler/linker it has to
-invoke. In my case, I hat to edit `~/.cargo/config`:
+invoke. In my case, I had to edit `~/.cargo/config`:
 ```
 [target.arm-unknown-linux-gnueabi]
 linker = "arm-linux-gnueabi-gcc"
