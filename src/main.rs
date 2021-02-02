@@ -493,11 +493,25 @@ fn main() {
 
     if cfg!(target_arch = "arm") {
         if stat.authors_fixed == 0 {
-            pocketbook::dialog(
-                pocketbook::Icon::Info,
-                "The database seems to be ok.\nNothing had to be fixed.",
-                &["OK"],
-            );
+            if stat.drm_skipped == 0 {
+                pocketbook::dialog(
+                    pocketbook::Icon::Info,
+                    "The database seems to be ok.\n\
+                    Nothing had to be fixed.",
+                    &["OK"],
+                );
+            } else {
+                pocketbook::dialog(
+                    pocketbook::Icon::Info,
+                    &format!(
+                        "The database seems to be ok.\n\
+                        Nothing had to be fixed.\n\
+                        (Books skipped (DRM): {})",
+                        &stat.drm_skipped
+                    ),
+                    &["OK"],
+                );
+            }
         } else {
             pocketbook::dialog(
                 pocketbook::Icon::Info,
