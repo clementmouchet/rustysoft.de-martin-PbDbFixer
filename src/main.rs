@@ -304,6 +304,7 @@ struct BookEntry {
     filepath: String,
     author: String,
     firstauthor: String,
+    has_drm: bool,
 }
 
 fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
@@ -331,12 +332,17 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
         let filepath = format!("{}/{}", prefix, filename);
         let firstauthor: String = row.get(3).unwrap();
         let author: String = row.get(4).unwrap();
+        let has_drm = match prefix.as_str() {
+            "/mnt/ext1/Digital Editions" => true,
+            _ => false,
+        };
 
         let entry = BookEntry {
             id: book_id,
             filepath,
             firstauthor,
             author,
+            has_drm,
         };
 
         book_entries.push(entry);
@@ -394,15 +400,22 @@ fn remove_ghost_books_from_db(tx: &Transaction) -> usize {
 struct Statistics {
     authors_fixed: i32,
     ghost_books_cleaned: usize,
+    drm_skipped: usize,
 }
 
 fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics {
     let mut stat = Statistics {
         authors_fixed: 0,
         ghost_books_cleaned: 0,
+        drm_skipped: 0,
     };
 
     for entry in book_entries {
+        if entry.has_drm {
+            stat.drm_skipped = stat.drm_skipped + 1;
+            continue;
+        }
+
         let file = File::open(entry.filepath.as_str());
         let file = match file {
             Err(_) => continue,
@@ -489,16 +502,20 @@ fn main() {
             pocketbook::dialog(
                 pocketbook::Icon::Info,
                 &format!(
-                    "Authors fixed: {}\nBooks cleaned from DB: {}",
-                    &stat.authors_fixed, &stat.ghost_books_cleaned
+                    "Authors fixed: {}\n\
+                    Books skipped (DRM): {}\n\
+                    Books cleaned from DB: {}",
+                    &stat.authors_fixed, &stat.drm_skipped, &stat.ghost_books_cleaned
                 ),
                 &["OK"],
             );
         }
     } else {
         println!(
-            "Authors fixed: {}\nBooks cleaned from DB: {}",
-            &stat.authors_fixed, &stat.ghost_books_cleaned
+            "Authors fixed: {}\n\
+            Books skipped (DRM): {}\n\
+            Books cleaned from DB: {}",
+            &stat.authors_fixed, &stat.drm_skipped, &stat.ghost_books_cleaned
         );
     }
 }
