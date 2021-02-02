@@ -12,7 +12,7 @@ pub enum Icon {
     WLan,
 }
 
-pub fn dialog(icon: Icon, text: &str) {
+pub fn dialog(icon: Icon, text: &str, buttons: &[&str]) -> i32 {
     let iconstr = match icon {
         Icon::None => "0",
         Icon::Info => "1",
@@ -22,8 +22,10 @@ pub fn dialog(icon: Icon, text: &str) {
         Icon::WLan => "5",
     };
 
-    Command::new(DIALOG_PATH)
-        .args(&[iconstr, "", text, "OK"])
+    let res = Command::new(DIALOG_PATH)
+        .args([&[iconstr, "", text], buttons].concat())
         .output()
         .unwrap();
+
+    res.status.code().unwrap_or(-1)
 }

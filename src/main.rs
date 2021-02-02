@@ -451,6 +451,24 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
 }
 
 fn main() {
+    if cfg!(target_arch = "arm") {
+        let res = pocketbook::dialog(
+            pocketbook::Icon::None,
+            "PocketBook has sometimes problems parsing metadata.\n\
+            This app tries to fix some of these issues.\n\
+            (Note: The database file explore-3.db will be altered!)\n\
+            \n\
+            Please be patient - this might take a while.\n\
+            You will see a blank screen during the process.\n\
+            \n\
+            Proceed?",
+            &["Cancel", "Yes"],
+        );
+        if res == 1 {
+            return;
+        }
+    }
+
     let mut conn = Connection::open("/mnt/ext1/system/explorer-3/explorer-3.db").unwrap();
 
     conn.execute("PRAGMA foreign_keys = 0", NO_PARAMS).unwrap();
@@ -465,6 +483,7 @@ fn main() {
             pocketbook::dialog(
                 pocketbook::Icon::Info,
                 "The database seems to be ok.\nNothing had to be fixed.",
+                &["OK"],
             );
         } else {
             pocketbook::dialog(
@@ -473,6 +492,7 @@ fn main() {
                     "Authors fixed: {}\nBooks cleaned from DB: {}",
                     &stat.authors_fixed, &stat.ghost_books_cleaned
                 ),
+                &["OK"],
             );
         }
     } else {
