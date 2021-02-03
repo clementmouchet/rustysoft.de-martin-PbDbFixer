@@ -10,6 +10,7 @@ metadata.
 This program is tested on a PocketBook 
 - *Touch HD 3* (software version 6.1.900)
 - *Touch Lux 4* (software version 6.0.1118)
+
 It might work with other PocketBook devices/software versions. Please tell me, if it works for you (and do make a backup of the explorer-3.db file before trying!).
 
 ## Installation and Usage
