@@ -1,9 +1,9 @@
 mod pocketbook;
 
 use rusqlite::{named_params, Connection, Result, Transaction, NO_PARAMS};
-use std::io::BufReader;
 use std::{collections::HashMap, fs::File};
 use std::{error::Error, io::Read};
+use std::{io::BufReader, usize};
 use xml::reader::{EventReader, ParserConfig, XmlEvent};
 use zip::{read::ZipFile, ZipArchive};
 
@@ -299,12 +299,48 @@ fn get_attribute_creator(opf: ZipFile) -> Option<String> {
     None
 }
 
+fn get_attribute_genre(opf: ZipFile) -> Option<String> {
+    let parser = ParserConfig::new()
+        .trim_whitespace(true)
+        .ignore_comments(true)
+        .coalesce_characters(true)
+        .create_reader(opf);
+
+    let mut genre_found = false;
+
+    for e in parser {
+        match e {
+            Ok(XmlEvent::StartElement { name, .. }) if name.local_name == "subject" => {
+                genre_found = true;
+            }
+            Ok(XmlEvent::Characters(value)) => {
+                if genre_found {
+                    return Some(value);
+                }
+            }
+            Ok(XmlEvent::StartElement { .. }) => {
+                if genre_found == true {
+                    genre_found = false;
+                }
+            }
+            Err(e) => {
+                println!("{}", e);
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
 struct BookEntry {
     id: i32,
     filepath: String,
     author: String,
     firstauthor: String,
     has_drm: bool,
+    genre: String,
 }
 
 fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
@@ -313,11 +349,15 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
     let mut stmt = tx
         .prepare(
             r"
-    SELECT books.id, folders.name, files.filename, books.firstauthor, books.author
+    SELECT books.id, folders.name, files.filename, books.firstauthor, books.author, genres.name
       FROM books_impl books JOIN files
         ON books.id = files.book_id
         JOIN folders
           ON folders.id = files.folder_id
+        LEFT OUTER JOIN booktogenre btg
+          ON books.id = btg.bookid
+        LEFT OUTER JOIN genres
+          ON genres.id = btg.genreid
       WHERE files.storageid = 1 AND books.ext = 'epub'
       ORDER BY books.id",
         )
@@ -336,6 +376,7 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
             "/mnt/ext1/Digital Editions" => true,
             _ => false,
         };
+        let genre: String = row.get(5).unwrap_or_default();
 
         let entry = BookEntry {
             id: book_id,
@@ -343,6 +384,7 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
             firstauthor,
             author,
             has_drm,
+            genre,
         };
 
         book_entries.push(entry);
@@ -401,6 +443,7 @@ struct Statistics {
     authors_fixed: i32,
     ghost_books_cleaned: usize,
     drm_skipped: usize,
+    genres_fixed: usize,
 }
 
 fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics {
@@ -408,6 +451,7 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
         authors_fixed: 0,
         ghost_books_cleaned: 0,
         drm_skipped: 0,
+        genres_fixed: 0,
     };
 
     for entry in book_entries {
@@ -451,6 +495,31 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
                     stmt.execute_named(named_params![":creator": creator, ":book_id": entry.id])
                         .unwrap();
                     stat.authors_fixed = stat.authors_fixed + 1;
+                }
+            }
+            // genre…
+            if entry.genre.is_empty() {
+                let opf = archive.by_name(opf_file.as_str()).unwrap();
+                if let Some(genre) = get_attribute_genre(opf) {
+                    let mut stmt = tx
+                        .prepare(
+                            r#"INSERT INTO genres (name) SELECT :genre ON CONFLICT DO NOTHING"#,
+                        )
+                        .unwrap();
+                    stmt.execute_named(named_params![":genre": &genre]).unwrap();
+                    let mut stmt = tx
+                        .prepare(
+                            r#"
+                        INSERT INTO booktogenre (bookid, genreid)
+                          VALUES (:bookid, 
+                            (SELECT id FROM genres WHERE name = :genre)
+                          )
+                          ON CONFLICT DO NOTHING"#,
+                        )
+                        .unwrap();
+                    stmt.execute_named(named_params![":bookid": &entry.id, ":genre": &genre])
+                        .unwrap();
+                    stat.genres_fixed = stat.genres_fixed + 1;
                 }
             }
         }
@@ -517,9 +586,13 @@ fn main() {
                 pocketbook::Icon::Info,
                 &format!(
                     "Authors fixed: {}\n\
-                    Books skipped (DRM): {}\n\
+                    Genres fixed:  {}\n\
+                    Books skipped (DRM):   {}\n\
                     Books cleaned from DB: {}",
-                    &stat.authors_fixed, &stat.drm_skipped, &stat.ghost_books_cleaned
+                    &stat.authors_fixed,
+                    &stat.genres_fixed,
+                    &stat.drm_skipped,
+                    &stat.ghost_books_cleaned
                 ),
                 &["OK"],
             );
@@ -527,9 +600,10 @@ fn main() {
     } else {
         println!(
             "Authors fixed: {}\n\
-            Books skipped (DRM): {}\n\
+            Genres fixed:  {}\n\
+            Books skipped (DRM):   {}\n\
             Books cleaned from DB: {}",
-            &stat.authors_fixed, &stat.drm_skipped, &stat.ghost_books_cleaned
+            &stat.authors_fixed, &stat.genres_fixed, &stat.drm_skipped, &stat.ghost_books_cleaned
         );
     }
 }
