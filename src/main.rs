@@ -151,8 +151,6 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
                 )
                 .unwrap();
                 stat.authors_fixed = stat.authors_fixed + 1;
-
-                println!("{}", firstauthors.join(" & "));
             }
 
             // Fix author names…
@@ -169,8 +167,6 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
                 )
                 .unwrap();
                 stat.authors_fixed = stat.authors_fixed + 1;
-
-                println!("{}", authornames.join(" & "));
             }
 
             if entry.genre.is_empty() && epub_metadata.genre.len() > 0 {

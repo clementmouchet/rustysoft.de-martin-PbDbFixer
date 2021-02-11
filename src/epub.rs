@@ -226,7 +226,6 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
                 genre_found = true;
             }
             Ok(Event::Text(ref e)) if genre_found => {
-                //epub_meta.genre = String::from_utf8(e.to_vec()).unwrap();
                 epub_meta.genre = e.unescape_and_decode(&reader).unwrap();
                 genre_found = false;
             }
@@ -234,8 +233,6 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
             _ => (),
         }
     }
-
-    //println!("{:?}", &xml_authors);
 
     epub_meta.authors = xml_authors
         .into_iter()
