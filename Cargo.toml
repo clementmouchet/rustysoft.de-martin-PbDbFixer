@@ -1,6 +1,6 @@
 [package]
 name = "pbdbfixer"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Martin Brodbeck <martin@brodbeck-online.de>"]
 edition = "2018"
 
@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 zip = "0.5"
-xml-rs = "0.8"
+quick-xml = "0.21"
 
 [dependencies.rusqlite]
 version = "0.24"

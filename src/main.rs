@@ -1,338 +1,8 @@
+mod epub;
 mod pocketbook;
 
-use rusqlite::{named_params, Connection, Result, Transaction, NO_PARAMS};
-use std::{collections::HashMap, fs::File};
-use std::{error::Error, io::Read};
-use std::{io::BufReader, usize};
-use xml::reader::{EventReader, ParserConfig, XmlEvent};
-use zip::{read::ZipFile, ZipArchive};
-
-fn get_root_file(mut container: ZipFile) -> Result<Option<String>, Box<dyn Error>> {
-    let mut buf = String::new();
-    container.read_to_string(&mut buf).unwrap();
-
-    // Get rid of the BOM mark, if any
-    if buf.starts_with("\u{feff}") {
-        buf = buf.strip_prefix("\u{feff}").unwrap().to_owned();
-    }
-
-    let parser = EventReader::new(BufReader::new(buf.as_bytes()));
-
-    for e in parser {
-        match e {
-            Ok(XmlEvent::StartElement {
-                name, attributes, ..
-            }) if name.local_name == "rootfile" => {
-                for attr in attributes {
-                    if attr.name.local_name == "full-path" {
-                        return Ok(Some(attr.value));
-                    }
-                }
-            }
-            Err(e) => {
-                return Err(Box::new(e));
-            }
-            _ => {}
-        }
-    }
-    Ok(None)
-}
-
-struct Refine {
-    role: String,
-    file_as: String,
-}
-
-fn get_attribute_file_as(opf: ZipFile) -> Option<String> {
-    let parser = ParserConfig::new()
-        .trim_whitespace(true)
-        .ignore_comments(true)
-        .coalesce_characters(true)
-        .create_reader(opf);
-
-    let mut is_epub3 = false;
-    let mut creator_ids = Vec::new();
-    let mut refines_found = false;
-    let mut role_found = false;
-    let mut refine_entries = HashMap::new();
-    let mut curr_id = String::new();
-
-    for e in parser {
-        match e {
-            Ok(XmlEvent::StartElement {
-                name, attributes, ..
-            }) if name.local_name == "package" => {
-                for attr in attributes {
-                    if attr.name.local_name == "version" {
-                        if attr.value.starts_with("3") == true {
-                            is_epub3 = true;
-                        }
-                    }
-                }
-            }
-            Ok(XmlEvent::StartElement {
-                name, attributes, ..
-            }) if name.local_name == "creator" => {
-                for attr in attributes {
-                    if attr.name.local_name == "file-as" {
-                        return Some(attr.value);
-                    }
-                    if is_epub3 && attr.name.local_name == "id" {
-                        creator_ids.push("#".to_owned() + attr.value.as_str());
-                    }
-                }
-            }
-            Ok(XmlEvent::StartElement {
-                name, attributes, ..
-            }) if name.local_name == "meta" => {
-                if attributes.iter().any(|attr| {
-                    attr.name.local_name == "refines" && creator_ids.contains(&attr.value)
-                }) && attributes
-                    .iter()
-                    .any(|attr| attr.name.local_name == "property" && attr.value == "file-as")
-                {
-                    refines_found = true;
-                    curr_id = attributes
-                        .iter()
-                        .find(|a| a.name.local_name == "refines")
-                        .unwrap()
-                        .value
-                        .clone();
-                } else if attributes.iter().any(|attr| {
-                    attr.name.local_name == "refines" && creator_ids.contains(&attr.value)
-                }) && attributes
-                    .iter()
-                    .any(|attr| attr.name.local_name == "property" && attr.value == "role")
-                {
-                    role_found = true;
-                    curr_id = attributes
-                        .iter()
-                        .find(|a| a.name.local_name == "refines")
-                        .unwrap()
-                        .value
-                        .clone();
-                }
-            }
-            Ok(XmlEvent::Characters(value)) => {
-                if role_found == true {
-                    if value == "aut" {
-                        let entry = refine_entries.entry(curr_id.clone()).or_insert(Refine {
-                            role: "".to_string(),
-                            file_as: "".to_string(),
-                        });
-                        entry.role = value;
-                    }
-                    role_found = false;
-                } else if refines_found == true {
-                    let entry = refine_entries.entry(curr_id.clone()).or_insert(Refine {
-                        role: "".to_string(),
-                        file_as: "".to_string(),
-                    });
-                    entry.file_as = value;
-                    refines_found = false;
-                }
-            }
-            Ok(XmlEvent::StartElement { .. }) => {
-                if refines_found == true {
-                    refines_found = false;
-                }
-            }
-            Err(_e) => {
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    if refine_entries.len() == 1 {
-        return Some(refine_entries.values().next().unwrap().file_as.clone());
-    } else if refine_entries.len() >= 2 {
-        return Some(
-            refine_entries
-                .values()
-                .into_iter()
-                .filter(|v| v.role == "aut")
-                .map(|v| v.file_as.clone())
-                .collect::<Vec<String>>()
-                .join(" & "),
-        );
-    }
-
-    None
-}
-
-struct Creator {
-    role: String,
-    name: String,
-}
-
-fn get_attribute_creator(opf: ZipFile) -> Option<String> {
-    let parser = ParserConfig::new()
-        .trim_whitespace(true)
-        .ignore_comments(true)
-        .coalesce_characters(true)
-        .create_reader(opf);
-
-    let mut is_epub3 = false;
-    let mut creator_found = true;
-    let mut creator_ids = Vec::new();
-    let mut role_found = false;
-    let mut creator_entries = HashMap::new();
-    let mut epub2_creator_entries = Vec::new();
-    let mut curr_id = String::new();
-
-    for e in parser {
-        match e {
-            Ok(XmlEvent::StartElement {
-                name, attributes, ..
-            }) if name.local_name == "package" => {
-                for attr in attributes {
-                    if attr.name.local_name == "version" {
-                        if attr.value.starts_with("3") == true {
-                            is_epub3 = true;
-                        }
-                    }
-                }
-            }
-            Ok(XmlEvent::StartElement {
-                name, attributes, ..
-            }) if name.local_name == "creator" => {
-                creator_found = true;
-                if !is_epub3 {
-                    match attributes
-                        .iter()
-                        .find(|attr| attr.name.local_name == "role")
-                    {
-                        Some(attr) => {
-                            epub2_creator_entries.push(Creator {
-                                role: attr.value.clone(),
-                                name: "".to_string(),
-                            });
-                        }
-                        None => {
-                            epub2_creator_entries.push(Creator {
-                                role: "aut".to_string(),
-                                name: "".to_string(),
-                            });
-                        }
-                    }
-                }
-                for attr in attributes {
-                    if is_epub3 && attr.name.local_name == "id" {
-                        creator_ids.push("#".to_owned() + attr.value.as_str());
-                        //creator_entries.insert(attr.value.clone(), Creator{role: "".to_string(), name: "".to_string()});
-                        curr_id = "#".to_owned() + attr.value.as_str();
-                    }
-                }
-            }
-            Ok(XmlEvent::StartElement {
-                name, attributes, ..
-            }) if name.local_name == "meta" => {
-                if attributes.iter().any(|attr| {
-                    attr.name.local_name == "refines" && creator_ids.contains(&attr.value)
-                }) && attributes
-                    .iter()
-                    .any(|attr| attr.name.local_name == "property" && attr.value == "role")
-                {
-                    role_found = true;
-                    curr_id = attributes
-                        .iter()
-                        .find(|a| a.name.local_name == "refines")
-                        .unwrap()
-                        .value
-                        .clone();
-                }
-            }
-            Ok(XmlEvent::Characters(value)) => {
-                if creator_found && is_epub3 == false {
-                    epub2_creator_entries.last_mut().unwrap().name = value.clone();
-                } else if creator_found && is_epub3 == true {
-                    let entry = creator_entries.entry(curr_id.clone()).or_insert(Creator {
-                        role: "".to_string(),
-                        name: "".to_string(),
-                    });
-                    entry.name = value;
-                    creator_found = false;
-                } else if role_found == true {
-                    let entry = creator_entries.entry(curr_id.clone()).or_insert(Creator {
-                        role: "".to_string(),
-                        name: "".to_string(),
-                    });
-                    entry.role = value;
-                    role_found = false;
-                }
-            }
-            Ok(XmlEvent::StartElement { .. }) => {
-                if creator_found == true {
-                    creator_found = false;
-                }
-            }
-            Err(e) => {
-                println!("{}", e);
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    if !is_epub3 && epub2_creator_entries.len() >= 1 {
-        return Some(
-            epub2_creator_entries
-                .into_iter()
-                .filter(|v| v.role == "aut")
-                .map(|v| v.name.clone())
-                .collect::<Vec<String>>()
-                .join(", "),
-        );
-    } else if creator_entries.len() >= 1 {
-        return Some(
-            creator_entries
-                .values()
-                .into_iter()
-                .filter(|v| v.role == "aut")
-                .map(|v| v.name.clone())
-                .collect::<Vec<String>>()
-                .join(", "),
-        );
-    }
-
-    None
-}
-
-fn get_attribute_genre(opf: ZipFile) -> Option<String> {
-    let parser = ParserConfig::new()
-        .trim_whitespace(true)
-        .ignore_comments(true)
-        .coalesce_characters(true)
-        .create_reader(opf);
-
-    let mut genre_found = false;
-
-    for e in parser {
-        match e {
-            Ok(XmlEvent::StartElement { name, .. }) if name.local_name == "subject" => {
-                genre_found = true;
-            }
-            Ok(XmlEvent::Characters(value)) => {
-                if genre_found {
-                    return Some(value);
-                }
-            }
-            Ok(XmlEvent::StartElement { .. }) => {
-                if genre_found == true {
-                    genre_found = false;
-                }
-            }
-            Err(e) => {
-                println!("{}", e);
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    None
-}
+use rusqlite::{named_params, Connection, Transaction, NO_PARAMS};
+use std::usize;
 
 struct BookEntry {
     id: i32,
@@ -460,67 +130,70 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
             continue;
         }
 
-        let file = File::open(entry.filepath.as_str());
-        let file = match file {
-            Err(_) => continue,
-            Ok(file) => file,
-        };
+        if let Some(epub_metadata) = epub::get_epub_metadata(&entry.filepath) {
+            let authors = epub_metadata
+                .authors
+                .iter()
+                .filter(|aut| aut.firstauthor.len() > 0)
+                .collect::<Vec<_>>();
 
-        let mut archive = ZipArchive::new(BufReader::new(file)).unwrap();
+            // Fix firstauthor…
+            let firstauthors = authors
+                .iter()
+                .map(|aut| aut.firstauthor.clone())
+                .collect::<Vec<_>>();
+            if !firstauthors.iter().all(|s| entry.firstauthor.contains(s)) {
+                let mut stmt = tx
+                    .prepare("UPDATE books_impl SET firstauthor = :file_as WHERE id = :book_id")
+                    .unwrap();
+                stmt.execute_named(
+                    named_params![":file_as": firstauthors.join(" & "), ":book_id": entry.id],
+                )
+                .unwrap();
+                stat.authors_fixed = stat.authors_fixed + 1;
 
-        let container = archive.by_name("META-INF/container.xml").unwrap();
-
-        if let Some(opf_file) = get_root_file(container).unwrap() {
-            let opf = archive.by_name(opf_file.as_str()).unwrap();
-            // firstauthor…
-            if let Some(file_as) = get_attribute_file_as(opf) {
-                if !file_as.split(" & ").all(|s| entry.firstauthor.contains(s)) {
-                    let mut stmt = tx
-                        .prepare("UPDATE books_impl SET firstauthor = :file_as WHERE id = :book_id")
-                        .unwrap();
-                    stmt.execute_named(named_params![":file_as": file_as, ":book_id": entry.id])
-                        .unwrap();
-                    stat.authors_fixed = stat.authors_fixed + 1;
-                }
+                println!("{}", firstauthors.join(" & "));
             }
-            let opf = archive.by_name(opf_file.as_str()).unwrap();
-            // author…
-            if let Some(creator) = get_attribute_creator(opf) {
-                if !creator.split(", ").all(|s| entry.author.contains(s))
-                    || creator.len() < entry.author.len()
-                {
-                    let mut stmt = tx
-                        .prepare("UPDATE books_impl SET author = :creator WHERE id = :book_id")
-                        .unwrap();
-                    stmt.execute_named(named_params![":creator": creator, ":book_id": entry.id])
-                        .unwrap();
-                    stat.authors_fixed = stat.authors_fixed + 1;
-                }
+
+            // Fix author names…
+            let authornames = authors
+                .iter()
+                .map(|aut| aut.name.clone())
+                .collect::<Vec<_>>();
+            if !authornames.iter().all(|s| entry.author.contains(s)) {
+                let mut stmt = tx
+                    .prepare("UPDATE books_impl SET author = :authors WHERE id = :book_id")
+                    .unwrap();
+                stmt.execute_named(
+                    named_params![":authors": authornames.join(", "), ":book_id": entry.id],
+                )
+                .unwrap();
+                stat.authors_fixed = stat.authors_fixed + 1;
+
+                println!("{}", authornames.join(" & "));
             }
-            // genre…
-            if entry.genre.is_empty() {
-                let opf = archive.by_name(opf_file.as_str()).unwrap();
-                if let Some(genre) = get_attribute_genre(opf) {
-                    let mut stmt = tx
-                        .prepare(
-                            r#"INSERT INTO genres (name) SELECT :genre ON CONFLICT DO NOTHING"#,
-                        )
-                        .unwrap();
-                    stmt.execute_named(named_params![":genre": &genre]).unwrap();
-                    let mut stmt = tx
-                        .prepare(
-                            r#"
-                        INSERT INTO booktogenre (bookid, genreid)
-                          VALUES (:bookid, 
-                            (SELECT id FROM genres WHERE name = :genre)
-                          )
-                          ON CONFLICT DO NOTHING"#,
-                        )
-                        .unwrap();
-                    stmt.execute_named(named_params![":bookid": &entry.id, ":genre": &genre])
-                        .unwrap();
-                    stat.genres_fixed = stat.genres_fixed + 1;
-                }
+
+            if entry.genre.is_empty() && epub_metadata.genre.len() > 0 {
+                let mut stmt = tx
+                    .prepare(r#"INSERT INTO genres (name) SELECT :genre ON CONFLICT DO NOTHING"#)
+                    .unwrap();
+                stmt.execute_named(named_params![":genre": &epub_metadata.genre])
+                    .unwrap();
+                let mut stmt = tx
+                    .prepare(
+                        r#"
+                    INSERT INTO booktogenre (bookid, genreid)
+                      VALUES (:bookid,
+                        (SELECT id FROM genres WHERE name = :genre)
+                      )
+                      ON CONFLICT DO NOTHING"#,
+                    )
+                    .unwrap();
+                stmt.execute_named(
+                    named_params![":bookid": &entry.id, ":genre": &epub_metadata.genre],
+                )
+                .unwrap();
+                stat.genres_fixed = stat.genres_fixed + 1;
             }
         }
     }
