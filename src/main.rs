@@ -121,6 +121,15 @@ struct Statistics {
     sorting_fixed: usize,
 }
 
+impl Statistics {
+    fn anything_fixed(&self) -> bool {
+        &self.authors_fixed > &0
+            || &self.genres_fixed > &0
+            || &self.ghost_books_cleaned > &0
+            || &self.sorting_fixed > &0
+    }
+}
+
 fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics {
     let mut stat = Statistics {
         authors_fixed: 0,
@@ -254,7 +263,7 @@ fn main() {
     tx.commit().unwrap();
 
     if cfg!(target_arch = "arm") {
-        if stat.authors_fixed == 0 {
+        if stat.anything_fixed() == false {
             if stat.drm_skipped == 0 {
                 pocketbook::dialog(
                     pocketbook::Icon::Info,
