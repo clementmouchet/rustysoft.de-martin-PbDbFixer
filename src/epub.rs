@@ -139,24 +139,19 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
                         .filter(|attr| attr.as_ref().unwrap().key.ends_with(b"file-as"))
                         .next()
                     {
-                        let ns =
-                            String::from_utf8(file_as_val.as_ref().unwrap().key.to_vec()).unwrap();
-                        curr_id = "none".to_string() + ns.split(':').collect::<Vec<&str>>()[0];
+                        curr_id = "none".to_string() + xml_authors.len().to_string().as_str();
                         let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut::new());
                         entry.sort = file_as_val
                             .unwrap()
                             .unescape_and_decode_value(&reader)
                             .unwrap_or_default();
                         entry.role = "aut".to_string();
-                    }
-                    if let Some(role_val) = e
+                    } else if let Some(_role_val) = e
                         .attributes()
                         .filter(|attr| attr.as_ref().unwrap().key.ends_with(b"role"))
                         .next()
                     {
-                        let ns =
-                            String::from_utf8(role_val.as_ref().unwrap().key.to_vec()).unwrap();
-                        curr_id = "none".to_string() + ns.split(':').collect::<Vec<&str>>()[0];
+                        curr_id = "none".to_string() + xml_authors.len().to_string().as_str();
                     }
                 }
             }
@@ -217,6 +212,8 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
         }
     }
 
+    //println!("Meta: {:?}", &xml_authors);
+
     epub_meta.authors = xml_authors
         .into_iter()
         .filter(|&(_, ref xml_author)| &xml_author.role == "aut" && &xml_author.name.len() > &0)
@@ -225,6 +222,8 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
             firstauthor: value.sort,
         })
         .collect();
+
+    //println!("Meta: {:?}", &epub_meta);
 
     Some(epub_meta)
 }

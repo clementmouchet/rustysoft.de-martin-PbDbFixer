@@ -11,6 +11,7 @@ struct BookEntry {
     firstauthor: String,
     has_drm: bool,
     genre: String,
+    first_author_letter: String,
 }
 
 fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
@@ -18,8 +19,9 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
 
     let mut stmt = tx
         .prepare(
-            r"
-    SELECT books.id, folders.name, files.filename, books.firstauthor, books.author, genres.name
+            r#"
+    SELECT books.id, folders.name, files.filename, books.firstauthor,
+      books.author, genres.name, first_author_letter
       FROM books_impl books JOIN files
         ON books.id = files.book_id
         JOIN folders
@@ -29,7 +31,7 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
         LEFT OUTER JOIN genres
           ON genres.id = btg.genreid
       WHERE files.storageid = 1 AND books.ext = 'epub'
-      ORDER BY books.id",
+      ORDER BY books.id"#,
         )
         .unwrap();
 
@@ -47,6 +49,7 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
             _ => false,
         };
         let genre: String = row.get(5).unwrap_or_default();
+        let first_author_letter = row.get(6).unwrap_or_default();
 
         let entry = BookEntry {
             id: book_id,
@@ -55,6 +58,7 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
             author,
             has_drm,
             genre,
+            first_author_letter,
         };
 
         book_entries.push(entry);
@@ -66,7 +70,7 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
 fn remove_ghost_books_from_db(tx: &Transaction) -> usize {
     let mut stmt = tx
         .prepare(
-            r"
+            r#"
             DELETE FROM books_impl
             WHERE id IN (
               SELECT books.id
@@ -74,34 +78,34 @@ fn remove_ghost_books_from_db(tx: &Transaction) -> usize {
                   LEFT OUTER JOIN files
                     ON books.id = files.book_id
                 WHERE files.filename is NULL
-            )",
+            )"#,
         )
         .unwrap();
 
     let num = stmt.execute(NO_PARAMS).unwrap();
 
     tx.execute(
-        r"DELETE FROM books_settings WHERE bookid NOT IN ( SELECT id FROM books_impl )",
+        r#"DELETE FROM books_settings WHERE bookid NOT IN ( SELECT id FROM books_impl )"#,
         NO_PARAMS,
     )
     .unwrap();
     tx.execute(
-        r"DELETE FROM books_uids WHERE book_id NOT IN ( SELECT id FROM books_impl )",
+        r#"DELETE FROM books_uids WHERE book_id NOT IN ( SELECT id FROM books_impl )"#,
         NO_PARAMS,
     )
     .unwrap();
     tx.execute(
-        r"DELETE FROM bookshelfs_books WHERE bookid NOT IN ( SELECT id FROM books_impl )",
+        r#"DELETE FROM bookshelfs_books WHERE bookid NOT IN ( SELECT id FROM books_impl )"#,
         NO_PARAMS,
     )
     .unwrap();
     tx.execute(
-        r"DELETE FROM booktogenre WHERE bookid NOT IN ( SELECT id FROM books_impl )",
+        r#"DELETE FROM booktogenre WHERE bookid NOT IN ( SELECT id FROM books_impl )"#,
         NO_PARAMS,
     )
     .unwrap();
     tx.execute(
-        r"DELETE FROM social WHERE bookid NOT IN ( SELECT id FROM books_impl )",
+        r#"DELETE FROM social WHERE bookid NOT IN ( SELECT id FROM books_impl )"#,
         NO_PARAMS,
     )
     .unwrap();
@@ -114,6 +118,7 @@ struct Statistics {
     ghost_books_cleaned: usize,
     drm_skipped: usize,
     genres_fixed: usize,
+    sorting_fixed: usize,
 }
 
 fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics {
@@ -122,6 +127,7 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
         ghost_books_cleaned: 0,
         drm_skipped: 0,
         genres_fixed: 0,
+        sorting_fixed: 0,
     };
 
     for entry in book_entries {
@@ -131,17 +137,14 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
         }
 
         if let Some(epub_metadata) = epub::get_epub_metadata(&entry.filepath) {
-            let authors = epub_metadata
+            // Fix firstauthor…
+            let mut firstauthors = epub_metadata
                 .authors
                 .iter()
                 .filter(|aut| aut.firstauthor.len() > 0)
-                .collect::<Vec<_>>();
-
-            // Fix firstauthor…
-            let firstauthors = authors
-                .iter()
                 .map(|aut| aut.firstauthor.clone())
                 .collect::<Vec<_>>();
+            firstauthors.sort();
             if !firstauthors.iter().all(|s| entry.firstauthor.contains(s)) {
                 let mut stmt = tx
                     .prepare("UPDATE books_impl SET firstauthor = :file_as WHERE id = :book_id")
@@ -153,8 +156,28 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
                 stat.authors_fixed = stat.authors_fixed + 1;
             }
 
+            // Fix first_author_letter
+            let first_author_letter = firstauthors
+                .join(" & ")
+                .chars()
+                .next()
+                .unwrap_or_default()
+                .to_string()
+                .to_uppercase();
+            if entry.first_author_letter != first_author_letter {
+                let mut stmt = tx
+                        .prepare("UPDATE books_impl SET first_author_letter = :first_letter WHERE id = :book_id")
+                        .unwrap();
+                stmt.execute_named(
+                    named_params![":first_letter": first_author_letter,":book_id": entry.id],
+                )
+                .unwrap();
+                stat.sorting_fixed = stat.sorting_fixed + 1;
+            }
+
             // Fix author names…
-            let authornames = authors
+            let authornames = epub_metadata
+                .authors
                 .iter()
                 .map(|aut| aut.name.clone())
                 .collect::<Vec<_>>();
@@ -169,6 +192,7 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
                 stat.authors_fixed = stat.authors_fixed + 1;
             }
 
+            // Fix genre…
             if entry.genre.is_empty() && epub_metadata.genre.len() > 0 {
                 let mut stmt = tx
                     .prepare(r#"INSERT INTO genres (name) SELECT :genre ON CONFLICT DO NOTHING"#)
@@ -255,10 +279,12 @@ fn main() {
                 pocketbook::Icon::Info,
                 &format!(
                     "Authors fixed: {}\n\
+                    Sorting fixed: {}\n\
                     Genres fixed:  {}\n\
                     Books skipped (DRM):   {}\n\
                     Books cleaned from DB: {}",
                     &stat.authors_fixed,
+                    &stat.sorting_fixed,
                     &stat.genres_fixed,
                     &stat.drm_skipped,
                     &stat.ghost_books_cleaned
@@ -269,10 +295,15 @@ fn main() {
     } else {
         println!(
             "Authors fixed: {}\n\
+            Sorting fixed: {}\n\
             Genres fixed:  {}\n\
             Books skipped (DRM):   {}\n\
             Books cleaned from DB: {}",
-            &stat.authors_fixed, &stat.genres_fixed, &stat.drm_skipped, &stat.ghost_books_cleaned
+            &stat.authors_fixed,
+            &stat.sorting_fixed,
+            &stat.genres_fixed,
+            &stat.drm_skipped,
+            &stat.ghost_books_cleaned
         );
     }
 }
