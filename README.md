@@ -9,6 +9,7 @@ metadata.
 ## Features
 The app tries to fix the following issues in the database
 - Correction of wrong firstauthor entries (books_impl table)
+- Correction of wrong first_author_letter entries (books_impl table)
 - Correction of wrong author entries (books_impl table)
 - Removing deleted e-books from the database (various tables)
 - Add missing genre if present in epub (genre and booktogenre tables)
