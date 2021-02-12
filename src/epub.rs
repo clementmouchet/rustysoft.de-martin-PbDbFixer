@@ -96,6 +96,16 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
         role: String,
     }
 
+    impl XmlAut {
+        fn new() -> Self {
+            XmlAut {
+                name: String::new(),
+                sort: String::new(),
+                role: String::new(),
+            }
+        }
+    }
+
     let mut xml_authors = HashMap::new();
 
     loop {
@@ -121,14 +131,7 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
                             + String::from_utf8(idval.unwrap().value.to_vec())
                                 .unwrap()
                                 .as_str();
-                        xml_authors.insert(
-                            curr_id.clone(),
-                            XmlAut {
-                                name: "".to_string(),
-                                sort: "".to_string(),
-                                role: "".to_string(),
-                            },
-                        );
+                        xml_authors.insert(curr_id.clone(), XmlAut::new());
                     }
                 } else {
                     if let Some(file_as_val) = e
@@ -139,11 +142,7 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
                         let ns =
                             String::from_utf8(file_as_val.as_ref().unwrap().key.to_vec()).unwrap();
                         curr_id = "none".to_string() + ns.split(':').collect::<Vec<&str>>()[0];
-                        let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut {
-                            name: "".to_string(),
-                            sort: "".to_string(),
-                            role: "".to_string(),
-                        });
+                        let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut::new());
                         entry.sort = file_as_val
                             .unwrap()
                             .unescape_and_decode_value(&reader)
@@ -163,18 +162,10 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
             }
             Ok(Event::Text(ref e)) if creator_found => {
                 if is_epub3 {
-                    let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut {
-                        name: "".to_string(),
-                        sort: "".to_string(),
-                        role: "".to_string(),
-                    });
+                    let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut::new());
                     entry.name = String::from_utf8(e.to_vec()).unwrap();
                 } else {
-                    let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut {
-                        name: "".to_string(),
-                        sort: "".to_string(),
-                        role: "".to_string(),
-                    });
+                    let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut::new());
                     entry.name = String::from_utf8(e.to_vec()).unwrap();
                     entry.role = "aut".to_string();
                 }
@@ -203,21 +194,13 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
                 }
             }
             Ok(Event::Text(ref e)) if file_as_found && is_epub3 => {
-                let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut {
-                    name: "".to_string(),
-                    sort: "".to_string(),
-                    role: "".to_string(),
-                });
+                let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut::new());
                 entry.sort = String::from_utf8(e.to_vec()).unwrap();
 
                 file_as_found = false;
             }
             Ok(Event::Text(ref e)) if role_found && is_epub3 => {
-                let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut {
-                    name: "".to_string(),
-                    sort: "".to_string(),
-                    role: "".to_string(),
-                });
+                let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut::new());
                 entry.role = String::from_utf8(e.to_vec()).unwrap();
 
                 role_found = false;
