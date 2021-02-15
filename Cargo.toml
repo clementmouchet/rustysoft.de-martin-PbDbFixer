@@ -1,6 +1,6 @@
 [package]
 name = "pbdbfixer"
-version = "0.7.0"
+version = "0.7.1"
 authors = ["Martin Brodbeck <martin@brodbeck-online.de>"]
 edition = "2018"
 

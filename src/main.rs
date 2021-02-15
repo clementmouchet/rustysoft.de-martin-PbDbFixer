@@ -196,7 +196,9 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
                 .iter()
                 .map(|aut| aut.name.clone())
                 .collect::<Vec<_>>();
-            if !authornames.iter().all(|s| entry.author.contains(s)) {
+            if !authornames.iter().all(|s| entry.author.contains(s))
+                || authornames.join(", ").len() != entry.author.len()
+            {
                 let mut stmt = tx
                     .prepare("UPDATE books_impl SET author = :authors WHERE id = :book_id")
                     .unwrap();
