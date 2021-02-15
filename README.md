@@ -13,10 +13,12 @@ The app tries to fix the following issues in the database
 - Correction of wrong author entries (books_impl table)
 - Removing deleted e-books from the database (various tables)
 - Add missing genre if present in epub (genre and booktogenre tables)
+- Add missing series information (books_impl table)
 
 ## Compatibility
 This program is tested on a PocketBook 
 - *Touch HD 3* (software version 6.1.900)
+- *Inkpad 3 Pro* (software version 6.0.1067)
 - *Touch Lux 4* (software version 6.0.1118)
 
 It might work with other PocketBook devices/software versions. Please tell me if it works for you (and do make a backup of the explorer-3.db file before trying!).

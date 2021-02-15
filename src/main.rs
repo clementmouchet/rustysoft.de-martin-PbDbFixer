@@ -12,6 +12,7 @@ struct BookEntry {
     has_drm: bool,
     genre: String,
     first_author_letter: String,
+    series: String,
 }
 
 fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
@@ -21,7 +22,7 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
         .prepare(
             r#"
     SELECT books.id, folders.name, files.filename, books.firstauthor,
-      books.author, genres.name, first_author_letter
+      books.author, genres.name, first_author_letter, series
       FROM books_impl books JOIN files
         ON books.id = files.book_id
         JOIN folders
@@ -50,6 +51,7 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
         };
         let genre: String = row.get(5).unwrap_or_default();
         let first_author_letter = row.get(6).unwrap_or_default();
+        let series: String = row.get(7).unwrap_or_default();
 
         let entry = BookEntry {
             id: book_id,
@@ -59,6 +61,7 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
             has_drm,
             genre,
             first_author_letter,
+            series,
         };
 
         book_entries.push(entry);
@@ -119,6 +122,7 @@ struct Statistics {
     drm_skipped: usize,
     genres_fixed: usize,
     sorting_fixed: usize,
+    series_fixed: usize,
 }
 
 impl Statistics {
@@ -127,6 +131,7 @@ impl Statistics {
             || &self.genres_fixed > &0
             || &self.ghost_books_cleaned > &0
             || &self.sorting_fixed > &0
+            || &self.series_fixed > &0
     }
 }
 
@@ -137,6 +142,7 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
         drm_skipped: 0,
         genres_fixed: 0,
         sorting_fixed: 0,
+        series_fixed: 0,
     };
 
     for entry in book_entries {
@@ -224,6 +230,18 @@ fn fix_db_entries(tx: &Transaction, book_entries: &Vec<BookEntry>) -> Statistics
                 .unwrap();
                 stat.genres_fixed = stat.genres_fixed + 1;
             }
+
+            // Fix series…
+            if !epub_metadata.series.name.is_empty() && entry.series.is_empty() {
+                let mut stmt = tx
+                    .prepare("UPDATE books_impl SET series = :series, numinseries = :series_index WHERE id = :book_id")
+                    .unwrap();
+                stmt.execute_named(
+                        named_params![":series": &epub_metadata.series.name, ":series_index": &epub_metadata.series.index, ":book_id": entry.id],
+                    )
+                    .unwrap();
+                stat.series_fixed = stat.series_fixed + 1;
+            }
         }
     }
 
@@ -290,11 +308,13 @@ fn main() {
                     "Authors fixed: {}\n\
                     Sorting fixed: {}\n\
                     Genres fixed:  {}\n\
+                    Series fixed:  {}\n\
                     Books skipped (DRM):   {}\n\
                     Books cleaned from DB: {}",
                     &stat.authors_fixed,
                     &stat.sorting_fixed,
                     &stat.genres_fixed,
+                    &stat.series_fixed,
                     &stat.drm_skipped,
                     &stat.ghost_books_cleaned
                 ),
@@ -306,11 +326,13 @@ fn main() {
             "Authors fixed: {}\n\
             Sorting fixed: {}\n\
             Genres fixed:  {}\n\
+            Series fixed:  {}\n\
             Books skipped (DRM):   {}\n\
             Books cleaned from DB: {}",
             &stat.authors_fixed,
             &stat.sorting_fixed,
             &stat.genres_fixed,
+            &stat.series_fixed,
             &stat.drm_skipped,
             &stat.ghost_books_cleaned
         );

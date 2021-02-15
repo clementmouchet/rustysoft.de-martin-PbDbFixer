@@ -14,9 +14,25 @@ pub struct Author {
 }
 
 #[derive(Debug)]
+pub struct Series {
+    pub name: String,
+    pub index: i32,
+}
+
+impl Series {
+    fn new() -> Self {
+        Series {
+            name: String::new(),
+            index: 0,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct EpubMetadata {
     pub authors: Vec<Author>,
     pub genre: String,
+    pub series: Series,
 }
 
 impl EpubMetadata {
@@ -24,6 +40,7 @@ impl EpubMetadata {
         EpubMetadata {
             authors: Vec::new(),
             genre: String::new(),
+            series: Series::new(),
         }
     }
 }
@@ -87,6 +104,8 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
     let mut file_as_found = false;
     let mut role_found = false;
     let mut genre_found = false;
+    let mut series_found = false;
+    let mut series_index_found = false;
     let mut is_epub3 = false;
 
     #[derive(Debug)]
@@ -185,7 +204,62 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
                     }) {
                         curr_id = String::from_utf8(refines.unwrap().value.to_vec()).unwrap();
                         role_found = true;
+                    } else if e.attributes().any(|attr| {
+                        attr.as_ref().unwrap().key == b"property"
+                            && attr.as_ref().unwrap().value.ends_with(b"group-position")
+                    }) {
+                        series_index_found = true;
                     }
+                }
+                if e.attributes().any(|attr| {
+                    attr.as_ref().unwrap().key == b"property"
+                        && attr
+                            .as_ref()
+                            .unwrap()
+                            .value
+                            .ends_with(b"belongs-to-collection")
+                }) {
+                    series_found = true;
+                }
+            }
+            Ok(Event::Empty(ref e)) if e.local_name() == b"meta" && !is_epub3 => {
+                if e.attributes().any(|attr| {
+                    attr.as_ref().unwrap().key == b"name"
+                        && attr
+                            .as_ref()
+                            .unwrap()
+                            .unescaped_value()
+                            .unwrap()
+                            .ends_with(b"series")
+                }) {
+                    epub_meta.series.name = e
+                        .attributes()
+                        .filter(|attr| attr.as_ref().unwrap().key == b"content")
+                        .next()
+                        .unwrap()
+                        .unwrap()
+                        .unescape_and_decode_value(&reader)
+                        .unwrap_or_default();
+                } else if e.attributes().any(|attr| {
+                    attr.as_ref().unwrap().key == b"name"
+                        && attr
+                            .as_ref()
+                            .unwrap()
+                            .unescaped_value()
+                            .unwrap()
+                            .ends_with(b"series_index")
+                }) {
+                    let index_float = e
+                        .attributes()
+                        .filter(|attr| attr.as_ref().unwrap().key == b"content")
+                        .next()
+                        .unwrap()
+                        .unwrap()
+                        .unescape_and_decode_value(&reader)
+                        .unwrap_or_default()
+                        .parse::<f32>()
+                        .unwrap_or_default();
+                    epub_meta.series.index = index_float as i32;
                 }
             }
             Ok(Event::Text(ref e)) if file_as_found && is_epub3 => {
@@ -200,6 +274,19 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
 
                 role_found = false;
             }
+            Ok(Event::Text(ref e)) if series_found && is_epub3 => {
+                epub_meta.series.name = String::from_utf8(e.to_vec()).unwrap();
+
+                series_found = false;
+            }
+            Ok(Event::Text(ref e)) if series_index_found && is_epub3 => {
+                epub_meta.series.index = String::from_utf8(e.to_vec())
+                    .unwrap()
+                    .parse()
+                    .unwrap_or_default();
+
+                series_index_found = false;
+            }
             Ok(Event::Start(ref e)) if e.local_name() == b"subject" => {
                 genre_found = true;
             }
@@ -212,8 +299,6 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
         }
     }
 
-    //println!("Meta: {:?}", &xml_authors);
-
     epub_meta.authors = xml_authors
         .into_iter()
         .filter(|&(_, ref xml_author)| &xml_author.role == "aut" && &xml_author.name.len() > &0)
@@ -222,8 +307,6 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
             firstauthor: value.sort,
         })
         .collect();
-
-    //println!("Meta: {:?}", &epub_meta);
 
     Some(epub_meta)
 }
