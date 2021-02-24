@@ -43,8 +43,8 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
         let prefix: String = row.get(1).unwrap();
         let filename: String = row.get(2).unwrap();
         let filepath = format!("{}/{}", prefix, filename);
-        let firstauthor: String = row.get(3).unwrap();
-        let author: String = row.get(4).unwrap();
+        let firstauthor: String = row.get(3).unwrap_or_default();
+        let author: String = row.get(4).unwrap_or_default();
         let has_drm = match prefix.as_str() {
             "/mnt/ext1/Digital Editions" => true,
             _ => false,
@@ -71,8 +71,6 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
 }
 
 fn remove_ghost_books_from_db(tx: &Transaction) -> usize {
-    tx.execute("PRAGMA foreign_keys = 0", NO_PARAMS).unwrap();
-
     let mut stmt = tx
         .prepare(
             r#"
@@ -115,8 +113,6 @@ fn remove_ghost_books_from_db(tx: &Transaction) -> usize {
     )
     .unwrap();
 
-    tx.execute("PRAGMA foreign_keys = 0", NO_PARAMS).unwrap();
-
     num
 }
 
@@ -150,6 +146,7 @@ pub fn fix_db_entries() -> Statistics {
     };
 
     let mut conn = Connection::open(DATABASE_FILE).unwrap();
+    conn.pragma_update(None, "foreign_keys", &0).unwrap();
     let tx = conn.transaction().unwrap();
 
     let book_entries = get_epubs_from_database(&tx);
