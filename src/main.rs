@@ -25,25 +25,12 @@ fn main() {
 
     if cfg!(target_arch = "arm") {
         if stat.anything_fixed() == false {
-            if stat.drm_skipped == 0 {
-                pocketbook::dialog(
-                    pocketbook::Icon::Info,
-                    "The database seems to be ok.\n\
+            pocketbook::dialog(
+                pocketbook::Icon::Info,
+                "The database seems to be ok.\n\
                     Nothing had to be fixed.",
-                    &["OK"],
-                );
-            } else {
-                pocketbook::dialog(
-                    pocketbook::Icon::Info,
-                    &format!(
-                        "The database seems to be ok.\n\
-                        Nothing had to be fixed.\n\
-                        (Books skipped (DRM): {})",
-                        &stat.drm_skipped
-                    ),
-                    &["OK"],
-                );
-            }
+                &["OK"],
+            );
         } else {
             pocketbook::dialog(
                 pocketbook::Icon::Info,
@@ -52,13 +39,11 @@ fn main() {
                     Sorting fixed: {}\n\
                     Genres fixed:  {}\n\
                     Series fixed:  {}\n\
-                    Books skipped (DRM):   {}\n\
                     Books cleaned from DB: {}",
                     &stat.authors_fixed,
                     &stat.sorting_fixed,
                     &stat.genres_fixed,
                     &stat.series_fixed,
-                    &stat.drm_skipped,
                     &stat.ghost_books_cleaned
                 ),
                 &["OK"],
@@ -70,13 +55,11 @@ fn main() {
             Sorting fixed: {}\n\
             Genres fixed:  {}\n\
             Series fixed:  {}\n\
-            Books skipped (DRM):   {}\n\
             Books cleaned from DB: {}",
             &stat.authors_fixed,
             &stat.sorting_fixed,
             &stat.genres_fixed,
             &stat.series_fixed,
-            &stat.drm_skipped,
             &stat.ghost_books_cleaned
         );
     }

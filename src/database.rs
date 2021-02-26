@@ -9,7 +9,6 @@ pub struct BookEntry {
     filepath: String,
     author: String,
     firstauthor: String,
-    has_drm: bool,
     genre: String,
     first_author_letter: String,
     series: String,
@@ -45,10 +44,6 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
         let filepath = format!("{}/{}", prefix, filename);
         let firstauthor: String = row.get(3).unwrap_or_default();
         let author: String = row.get(4).unwrap_or_default();
-        let has_drm = match prefix.as_str() {
-            "/mnt/ext1/Digital Editions" => true,
-            _ => false,
-        };
         let genre: String = row.get(5).unwrap_or_default();
         let first_author_letter = row.get(6).unwrap_or_default();
         let series: String = row.get(7).unwrap_or_default();
@@ -58,7 +53,6 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
             filepath,
             firstauthor,
             author,
-            has_drm,
             genre,
             first_author_letter,
             series,
@@ -119,7 +113,6 @@ fn remove_ghost_books_from_db(tx: &Transaction) -> usize {
 pub struct Statistics {
     pub authors_fixed: i32,
     pub ghost_books_cleaned: usize,
-    pub drm_skipped: usize,
     pub genres_fixed: usize,
     pub sorting_fixed: usize,
     pub series_fixed: usize,
@@ -139,7 +132,6 @@ pub fn fix_db_entries() -> Statistics {
     let mut stat = Statistics {
         authors_fixed: 0,
         ghost_books_cleaned: 0,
-        drm_skipped: 0,
         genres_fixed: 0,
         sorting_fixed: 0,
         series_fixed: 0,
@@ -152,11 +144,6 @@ pub fn fix_db_entries() -> Statistics {
     let book_entries = get_epubs_from_database(&tx);
 
     for entry in book_entries {
-        if entry.has_drm {
-            stat.drm_skipped = stat.drm_skipped + 1;
-            continue;
-        }
-
         if let Some(epub_metadata) = epub::get_epub_metadata(&entry.filepath) {
             // Fix firstauthor…
             let mut firstauthors = epub_metadata
@@ -185,7 +172,8 @@ pub fn fix_db_entries() -> Statistics {
                 .unwrap_or_default()
                 .to_string()
                 .to_uppercase();
-            if entry.first_author_letter != first_author_letter {
+
+            if first_author_letter != "\0" && (entry.first_author_letter != first_author_letter) {
                 let mut stmt = tx
                         .prepare("UPDATE books_impl SET first_author_letter = :first_letter WHERE id = :book_id")
                         .unwrap();

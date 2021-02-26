@@ -151,6 +151,10 @@ pub fn get_epub_metadata(filename: &str) -> Option<EpubMetadata> {
                                 .unwrap()
                                 .as_str();
                         xml_authors.insert(curr_id.clone(), XmlAut::new());
+                    } else {
+                        curr_id = "none".to_string() + xml_authors.len().to_string().as_str();
+                        let entry = xml_authors.entry(curr_id.clone()).or_insert(XmlAut::new());
+                        entry.role = "aut".to_string();
                     }
                 } else {
                     if let Some(file_as_val) = e
