@@ -35,10 +35,10 @@ Use at your own risk. In case of doubt it is not a mistake to make a backup of t
 Just copy the executable file into the PocketBook's application directory. If you encounter duplicate authors or other issues (see "Features" above) in the PocketBook's library, open the applications screen and tap on the PbDbFixer icon.
 
 If you don't see any changes:  
-There might be an explorer (which shows your library) process already running Then you should just stop/kill it with the task manager. Putting the device to sleep and then wake it up might also work. Afterwards, the changes should be visible to the explorer.
+There might be an explorer (which shows your library) process already running. Then you should just stop/kill it with the task manager. Putting the device to sleep and then wake it up might also work. Afterwards, the changes should be visible to the explorer.
 
 ## Build
-If you want to build PbDbFixer yourself, you have to have the cross compiler for ARM CPUs installed. On Arch Linux, the AUR package `arm-linux-gnueabi-gcc75-linaro-bin` does the job. Don't forget to tell `cargo` which compiler/linker it has to invoke. In my case, I had to edit `~/.cargo/config`:
+If you want to build PbDbFixer yourself, make sure that you have Rust's toolchain target `arm-unknown-linux-gnueabi` as well as the GCC cross compiler for ARM CPUs installed. On Arch Linux, the AUR package `arm-linux-gnueabi-gcc75-linaro-bin` does the job. Don't forget to tell `cargo` which compiler/linker it has to invoke. In my case, I had to edit `~/.cargo/config`:
 ```
 [target.arm-unknown-linux-gnueabi]
 linker = "arm-linux-gnueabi-gcc"
