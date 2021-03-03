@@ -15,6 +15,8 @@ The app tries to fix the following issues in the database
 - Add missing genre if present in epub (genre and booktogenre tables)
 - Add missing series information (books_impl table)
 
+The best results are achieved when metadata has been carefully maintained with Calibre.
+
 ## Compatibility
 This program is tested on a PocketBook 
 - *Touch HD 3* (software version 6.1.900)
@@ -36,6 +38,9 @@ Just copy the executable file into the PocketBook's application directory. If yo
 
 If you don't see any changes:  
 There might be an explorer (which shows your library) process already running. Then you should just stop/kill it with the task manager. Putting the device to sleep and then wake it up might also work. Afterwards, the changes should be visible to the explorer.
+
+## Feedback
+Feedback is highly appreciated. You can reach me via Matrix [@beedaddy:matrix.rustysoft.de](https://matrix.to/#/@beedaddy:matrix.rustysoft.de) or ask questions in the [PbDbFixer-Thread](https://www.e-reader-forum.de/t/pbdbfixer-noch-ein-tool-zum-korrigieren-von-metadaten.156702/) of the German *E-Reader Forum*.
 
 ## Build
 If you want to build PbDbFixer yourself, make sure that you have Rust's toolchain target `arm-unknown-linux-gnueabi` as well as the GCC cross compiler for ARM CPUs installed. On Arch Linux, the AUR package `arm-linux-gnueabi-gcc75-linaro-bin` does the job. Don't forget to tell `cargo` which compiler/linker it has to invoke. In my case, I had to edit `~/.cargo/config`:
