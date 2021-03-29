@@ -86,11 +86,24 @@ fn remove_ghost_books_from_db(tx: &Transaction) -> usize {
         NO_PARAMS,
     )
     .unwrap();
-    tx.execute(
-        r#"DELETE FROM books_uids WHERE book_id NOT IN ( SELECT id FROM books_impl )"#,
-        NO_PARAMS,
-    )
-    .unwrap();
+
+    let version: i32 = tx
+        .query_row(r#"SELECT id FROM version"#, NO_PARAMS, |r| r.get(0))
+        .unwrap();
+    if version >= 37 {
+        tx.execute(
+            r#"DELETE FROM books_fast_hashes WHERE book_id NOT IN ( SELECT id FROM books_impl )"#,
+            NO_PARAMS,
+        )
+        .unwrap();
+    } else {
+        tx.execute(
+            r#"DELETE FROM books_uids WHERE book_id NOT IN ( SELECT id FROM books_impl )"#,
+            NO_PARAMS,
+        )
+        .unwrap();
+    }
+
     tx.execute(
         r#"DELETE FROM bookshelfs_books WHERE bookid NOT IN ( SELECT id FROM books_impl )"#,
         NO_PARAMS,
