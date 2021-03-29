@@ -19,10 +19,10 @@ The best results are achieved when metadata has been carefully maintained with C
 
 ## Compatibility
 This program is tested on a PocketBook 
-- *Touch HD 3* (software version 6.1.900)
-- *Inkpad 3 Pro* (software version 6.0.1067)
+- *Touch HD 3* (software version 6.1)
+- *Inkpad 3 Pro* (software version 6.0 and 6.3 beta)
   - Known minor issue: dialog orientation is wrong
-- *Touch Lux 4* (software version 6.0.1118)
+- *Touch Lux 4* (software version 6.0)
 
 It might work with other PocketBook devices/software versions. Please tell me if it works for you (and do make a backup of the explorer-3.db file before trying!).
 
