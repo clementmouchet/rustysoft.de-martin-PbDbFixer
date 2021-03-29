@@ -15,7 +15,7 @@ The app tries to fix the following issues in the database
 - Add missing genre if present in epub (genre and booktogenre tables)
 - Add missing series information (books_impl table)
 
-The best results are achieved when metadata has been carefully maintained with Calibre.
+The best results are achieved when metadata has been carefully maintained with **Calibre**.
 
 ## Compatibility
 This program is tested on a PocketBook 
