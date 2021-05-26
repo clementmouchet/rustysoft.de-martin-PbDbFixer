@@ -15,14 +15,13 @@ The app tries to fix the following issues in the database
 - Add missing genre if present in epub (genre and booktogenre tables)
 - Add missing series information (books_impl table)
 
-The best results are achieved when metadata has been carefully maintained with Calibre.
+The best results are achieved when metadata has been carefully maintained with **Calibre**.
 
 ## Compatibility
 This program is tested on a PocketBook 
-- *Touch HD 3* (software version 6.1.900)
-- *Inkpad 3 Pro* (software version 6.0.1067)
-  - Known minor issue: dialog orientation is wrong
-- *Touch Lux 4* (software version 6.0.1118)
+- *Touch HD 3* (software version 6.1)
+- *Inkpad 3 Pro* (software version 6.3)
+- *Touch Lux 4* (software version 6.3)
 
 It might work with other PocketBook devices/software versions. Please tell me if it works for you (and do make a backup of the explorer-3.db file before trying!).
 
