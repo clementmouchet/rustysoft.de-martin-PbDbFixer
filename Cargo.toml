@@ -11,5 +11,5 @@ zip = "0.5"
 quick-xml = "0.22"
 
 [dependencies.rusqlite]
-version = "0.24"
+version = "0.25"
 features = ["bundled"]

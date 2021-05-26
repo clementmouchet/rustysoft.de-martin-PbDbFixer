@@ -1,4 +1,4 @@
-use rusqlite::{named_params, Connection, Transaction, NO_PARAMS};
+use rusqlite::{named_params, Connection, Transaction};
 
 use crate::epub;
 
@@ -35,7 +35,7 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
         )
         .unwrap();
 
-    let mut rows = stmt.query(NO_PARAMS).unwrap();
+    let mut rows = stmt.query([]).unwrap();
 
     while let Some(row) = rows.next().unwrap() {
         let book_id: i32 = row.get(0).unwrap();
@@ -79,44 +79,44 @@ fn remove_ghost_books_from_db(tx: &Transaction) -> usize {
         )
         .unwrap();
 
-    let num = stmt.execute(NO_PARAMS).unwrap();
+    let num = stmt.execute([]).unwrap();
 
     tx.execute(
         r#"DELETE FROM books_settings WHERE bookid NOT IN ( SELECT id FROM books_impl )"#,
-        NO_PARAMS,
+        [],
     )
     .unwrap();
 
     let version: i32 = tx
-        .query_row(r#"SELECT id FROM version"#, NO_PARAMS, |r| r.get(0))
+        .query_row(r#"SELECT id FROM version"#, [], |r| r.get(0))
         .unwrap();
     if version >= 37 {
         tx.execute(
             r#"DELETE FROM books_fast_hashes WHERE book_id NOT IN ( SELECT id FROM books_impl )"#,
-            NO_PARAMS,
+            [],
         )
         .unwrap();
     } else {
         tx.execute(
             r#"DELETE FROM books_uids WHERE book_id NOT IN ( SELECT id FROM books_impl )"#,
-            NO_PARAMS,
+            [],
         )
         .unwrap();
     }
 
     tx.execute(
         r#"DELETE FROM bookshelfs_books WHERE bookid NOT IN ( SELECT id FROM books_impl )"#,
-        NO_PARAMS,
+        [],
     )
     .unwrap();
     tx.execute(
         r#"DELETE FROM booktogenre WHERE bookid NOT IN ( SELECT id FROM books_impl )"#,
-        NO_PARAMS,
+        [],
     )
     .unwrap();
     tx.execute(
         r#"DELETE FROM social WHERE bookid NOT IN ( SELECT id FROM books_impl )"#,
-        NO_PARAMS,
+        [],
     )
     .unwrap();
 
@@ -170,7 +170,7 @@ pub fn fix_db_entries() -> Statistics {
                 let mut stmt = tx
                     .prepare("UPDATE books_impl SET firstauthor = :file_as WHERE id = :book_id")
                     .unwrap();
-                stmt.execute_named(
+                stmt.execute(
                     named_params![":file_as": firstauthors.join(" & "), ":book_id": entry.id],
                 )
                 .unwrap();
@@ -190,7 +190,7 @@ pub fn fix_db_entries() -> Statistics {
                 let mut stmt = tx
                         .prepare("UPDATE books_impl SET first_author_letter = :first_letter WHERE id = :book_id")
                         .unwrap();
-                stmt.execute_named(
+                stmt.execute(
                     named_params![":first_letter": first_author_letter,":book_id": entry.id],
                 )
                 .unwrap();
@@ -209,7 +209,7 @@ pub fn fix_db_entries() -> Statistics {
                 let mut stmt = tx
                     .prepare("UPDATE books_impl SET author = :authors WHERE id = :book_id")
                     .unwrap();
-                stmt.execute_named(
+                stmt.execute(
                     named_params![":authors": authornames.join(", "), ":book_id": entry.id],
                 )
                 .unwrap();
@@ -221,7 +221,7 @@ pub fn fix_db_entries() -> Statistics {
                 let mut stmt = tx
                     .prepare(r#"INSERT INTO genres (name) SELECT :genre ON CONFLICT DO NOTHING"#)
                     .unwrap();
-                stmt.execute_named(named_params![":genre": &epub_metadata.genre])
+                stmt.execute(named_params![":genre": &epub_metadata.genre])
                     .unwrap();
                 let mut stmt = tx
                     .prepare(
@@ -233,7 +233,7 @@ pub fn fix_db_entries() -> Statistics {
                       ON CONFLICT DO NOTHING"#,
                     )
                     .unwrap();
-                stmt.execute_named(
+                stmt.execute(
                     named_params![":bookid": &entry.id, ":genre": &epub_metadata.genre],
                 )
                 .unwrap();
@@ -245,7 +245,7 @@ pub fn fix_db_entries() -> Statistics {
                 let mut stmt = tx
                     .prepare("UPDATE books_impl SET series = :series, numinseries = :series_index WHERE id = :book_id")
                     .unwrap();
-                stmt.execute_named(
+                stmt.execute(
                         named_params![":series": &epub_metadata.series.name, ":series_index": &epub_metadata.series.index, ":book_id": entry.id],
                     )
                     .unwrap();
