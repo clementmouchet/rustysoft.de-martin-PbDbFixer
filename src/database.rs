@@ -30,7 +30,7 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
           ON books.id = btg.bookid
         LEFT OUTER JOIN genres
           ON genres.id = btg.genreid
-      WHERE files.storageid = 1 AND books.ext = 'epub'
+      WHERE files.storageid = 1 AND (books.ext = 'epub' OR files.filename LIKE '%.epub')
       ORDER BY books.id"#,
         )
         .unwrap();
