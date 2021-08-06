@@ -17,9 +17,17 @@ pub struct BookEntry {
 fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
     let mut book_entries = Vec::new();
 
-    let mut stmt = tx
-        .prepare(
-            r#"
+    let version: i32 = tx
+        .query_row(r#"SELECT id FROM version"#, [], |r| r.get(0))
+        .unwrap();
+
+    let books_or_files = match version {
+        x if x >= 38 => "files",
+        _ => "books",
+    };
+
+    let stmt_str = format!(
+        r#"
     SELECT books.id, folders.name, files.filename, books.firstauthor,
       books.author, genres.name, first_author_letter, series
       FROM books_impl books JOIN files
@@ -30,10 +38,12 @@ fn get_epubs_from_database(tx: &Transaction) -> Vec<BookEntry> {
           ON books.id = btg.bookid
         LEFT OUTER JOIN genres
           ON genres.id = btg.genreid
-      WHERE files.storageid = 1 AND (books.ext = 'epub' OR files.filename LIKE '%.epub')
+      WHERE files.storageid = 1 AND {}.ext = 'epub'
       ORDER BY books.id"#,
-        )
-        .unwrap();
+        &books_or_files
+    );
+
+    let mut stmt = tx.prepare(&stmt_str).unwrap();
 
     let mut rows = stmt.query([]).unwrap();
 
@@ -233,10 +243,8 @@ pub fn fix_db_entries() -> Statistics {
                       ON CONFLICT DO NOTHING"#,
                     )
                     .unwrap();
-                stmt.execute(
-                    named_params![":bookid": &entry.id, ":genre": &epub_metadata.genre],
-                )
-                .unwrap();
+                stmt.execute(named_params![":bookid": &entry.id, ":genre": &epub_metadata.genre])
+                    .unwrap();
                 stat.genres_fixed = stat.genres_fixed + 1;
             }
 
