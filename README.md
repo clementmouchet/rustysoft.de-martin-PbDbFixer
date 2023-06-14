@@ -19,9 +19,9 @@ The best results are achieved when metadata has been carefully maintained with *
 
 ## Compatibility
 This program is tested on a PocketBook 
-- *Touch HD 3* (software version 6.5)
-- *Inkpad 3 Pro* (software version 6.5)
-- *Touch Lux 4* (software version 6.3)
+- *Touch Lux 4* (software version 6.5)
+- *Touch HD 3* (software version 6.7)
+- *InkPad 4* (software version 6.8)
 
 It might work with other PocketBook devices/software versions. Please tell me if it works for you (and do make a backup of the explorer-3.db file before trying!).
 
